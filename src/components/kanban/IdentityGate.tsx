@@ -60,7 +60,7 @@ export function IdentityGate({
 
   return (
     <Dialog open={isOpen} onOpenChange={(next) => (me ? close(next) : undefined)}>
-      <DialogContent showCloseButton={Boolean(me)} className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Who's working the board?</DialogTitle>
           <DialogDescription>
