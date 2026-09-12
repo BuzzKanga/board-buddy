@@ -92,31 +92,54 @@ function BoardPage() {
     return queryClient.invalidateQueries({ queryKey: ["board", boardId] });
   };
 
-  const mutate = <TArgs,>(fn: (args: TArgs) => Promise<unknown>) =>
-    useMutation({ mutationFn: fn, onSuccess: () => refresh() });
+  const onSuccess = () => {
+    refresh();
+  };
 
-  const addColumn = mutate((name: string) => createColumn(boardId, name));
-  const editColumn = mutate(({ id, data }: { id: string; data: Partial<Column> }) =>
-    updateColumn(id, data),
-  );
-  const removeColumn = mutate((id: string) => deleteColumn(id));
-  const addCard = mutate(({ columnId, title }: { columnId: string; title: string }) =>
-    createCard(columnId, { title }),
-  );
-  const editCard = mutate(({ id, data }: { id: string; data: Partial<Card> }) =>
-    updateCard(id, data),
-  );
-  const removeCard = mutate((id: string) => deleteCard(id));
-  const addLabel = mutate((data: { name: string; color: string }) =>
-    createLabel(boardId, data),
-  );
-  const removeLabel = mutate((id: string) => deleteLabel(id));
-  const attachLabel = mutate(({ cardId, labelId }: { cardId: string; labelId: string }) =>
-    attachLabelToCard(cardId, labelId),
-  );
-  const detachLabel = mutate(({ cardId, labelId }: { cardId: string; labelId: string }) =>
-    removeLabelFromCard(cardId, labelId),
-  );
+  const addColumn = useMutation({
+    mutationFn: (name: string) => createColumn(boardId, name),
+    onSuccess,
+  });
+  const editColumn = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Column> }) =>
+      updateColumn(id, data),
+    onSuccess,
+  });
+  const removeColumn = useMutation({
+    mutationFn: (id: string) => deleteColumn(id),
+    onSuccess,
+  });
+  const addCard = useMutation({
+    mutationFn: ({ columnId, title }: { columnId: string; title: string }) =>
+      createCard(columnId, { title }),
+    onSuccess,
+  });
+  const editCard = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Card> }) => updateCard(id, data),
+    onSuccess,
+  });
+  const removeCard = useMutation({
+    mutationFn: (id: string) => deleteCard(id),
+    onSuccess,
+  });
+  const addLabel = useMutation({
+    mutationFn: (data: { name: string; color: string }) => createLabel(boardId, data),
+    onSuccess,
+  });
+  const removeLabel = useMutation({
+    mutationFn: (id: string) => deleteLabel(id),
+    onSuccess,
+  });
+  const attachLabel = useMutation({
+    mutationFn: ({ cardId, labelId }: { cardId: string; labelId: string }) =>
+      attachLabelToCard(cardId, labelId),
+    onSuccess,
+  });
+  const detachLabel = useMutation({
+    mutationFn: ({ cardId, labelId }: { cardId: string; labelId: string }) =>
+      removeLabelFromCard(cardId, labelId),
+    onSuccess,
+  });
 
   const board = boardQuery.data;
 
