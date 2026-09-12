@@ -57,7 +57,7 @@ export function CardDetailDialog({
   const [dueDate, setDueDate] = useState("");
   const [assignee, setAssignee] = useState<string>(UNASSIGNED);
   const [newLabelName, setNewLabelName] = useState("");
-  const [newLabelColor, setNewLabelColor] = useState(PERSON_COLORS[1]);
+  const [newLabelColor, setNewLabelColor] = useState(PERSON_COLORS[1]!);
 
   useEffect(() => {
     if (!card) return;
