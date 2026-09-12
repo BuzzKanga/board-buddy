@@ -27,12 +27,12 @@ export function IdentityGate({
 }: {
   me: Person | null;
   onChange: (person: Person) => void;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const [firstVisitOpen, setFirstVisitOpen] = useState(false);
   const [name, setName] = useState(me?.name ?? "");
-  const [color, setColor] = useState(me?.color ?? PERSON_COLORS[0]);
+  const [color, setColor] = useState(me?.color ?? PERSON_COLORS[0]!);
 
   useEffect(() => {
     if (!getMe()) setFirstVisitOpen(true);

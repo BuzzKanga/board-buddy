@@ -18,7 +18,7 @@ export function PriorityBadge({
   className,
 }: {
   priority: Priority;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <span

@@ -8,9 +8,9 @@ export function AssigneeAvatar({
   className,
 }: {
   name: string;
-  color?: string | null;
-  size?: "sm" | "md";
-  className?: string;
+  color?: string | null | undefined;
+  size?: "sm" | "md" | undefined;
+  className?: string | undefined;
 }) {
   return (
     <span

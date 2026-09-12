@@ -69,7 +69,7 @@ function seed(): Db {
     const cardId = uid();
     db.cards.push({
       id: cardId,
-      column_id: cols[colIdx].id,
+      column_id: cols[colIdx]!.id,
       title,
       description,
       assignee_name: null,
@@ -81,7 +81,7 @@ function seed(): Db {
       updated_at: now(),
     });
     labelIdxs.forEach((li) =>
-      db.card_labels.push({ card_id: cardId, label_id: labels[li].id }),
+      db.card_labels.push({ card_id: cardId, label_id: labels[li]!.id }),
     );
   });
 
