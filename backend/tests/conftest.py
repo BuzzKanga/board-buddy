@@ -29,7 +29,7 @@ def auth_headers(client: TestClient) -> dict[str, str]:
         "username": "testuser",
         "password": "testpass123",
     })
-    resp = client.post("/auth/login", json={
+    resp = client.post("/auth/login", data={
         "username": "testuser",
         "password": "testpass123",
     })

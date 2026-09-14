@@ -41,7 +41,7 @@ class TestRegister:
 class TestLogin:
     def test_login_success(self, client):
         # The demo user is seeded
-        resp = client.post("/auth/login", json={
+        resp = client.post("/auth/login", data={
             "username": "demo",
             "password": "password123",
         })
@@ -49,14 +49,14 @@ class TestLogin:
         assert "access_token" in resp.json()
 
     def test_login_wrong_password(self, client):
-        resp = client.post("/auth/login", json={
+        resp = client.post("/auth/login", data={
             "username": "demo",
             "password": "wrong",
         })
         assert resp.status_code == 401
 
     def test_login_unknown_user(self, client):
-        resp = client.post("/auth/login", json={
+        resp = client.post("/auth/login", data={
             "username": "nobody",
             "password": "anything",
         })
