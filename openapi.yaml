@@ -1,0 +1,654 @@
+openapi: 3.1.0
+info:
+  title: Board Buddy API
+  description: |
+    REST API for Board Buddy, a mini-kanban board application.
+    Reverse-engineered from the frontend mock service layer so the real
+    backend can be built to match exactly what the frontend already consumes.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+# No authentication — spec explicitly states "No authentication, no passwords,
+# no server-verified identity." Identity is purely a client-side display name
+# and color stored in localStorage.
+
+paths:
+  # ────────────────────────────── Boards ──────────────────────────────
+
+  /boards:
+    get:
+      operationId: getBoards
+      summary: List all boards
+      description: Returns all boards sorted by created_at ascending.
+      tags: [Boards]
+      responses:
+        "200":
+          description: A list of boards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Board"
+
+    post:
+      operationId: createBoard
+      summary: Create a new board
+      description: |
+        Creates a board with the given name. If the name is empty or
+        whitespace-only, defaults to "Untitled board". The backend should also
+        create three default columns ("To Do", "In Progress", "Done") for the
+        new board.
+      tags: [Boards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: "Product Launch"
+      responses:
+        "201":
+          description: The created board.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Board"
+
+  /boards/{boardId}:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+
+    get:
+      operationId: getBoard
+      summary: Get board detail
+      description: |
+        Returns the board together with all its columns (sorted by position),
+        cards (sorted by position), labels, and card-label associations.
+      tags: [Boards]
+      responses:
+        "200":
+          description: Full board detail payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardDetail"
+        "404":
+          description: Board not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      operationId: updateBoard
+      summary: Rename a board
+      tags: [Boards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Sprint 12"
+      responses:
+        "200":
+          description: The updated board.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Board"
+        "404":
+          description: Board not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      operationId: deleteBoard
+      summary: Delete a board
+      description: |
+        Deletes the board and cascades to its columns, cards, labels, and
+        card-label associations.
+      tags: [Boards]
+      responses:
+        "204":
+          description: Board deleted successfully.
+        "404":
+          description: Board not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ────────────────────────────── Columns ─────────────────────────────
+
+  /boards/{boardId}/columns:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+
+    post:
+      operationId: createColumn
+      summary: Create a column in a board
+      description: |
+        Appends a new column at the end. If name is empty, defaults to
+        "New column".
+      tags: [Columns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: "In Review"
+      responses:
+        "201":
+          description: The created column.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Column"
+        "404":
+          description: Board not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /columns/{columnId}:
+    parameters:
+      - $ref: "#/components/parameters/columnId"
+
+    patch:
+      operationId: updateColumn
+      summary: Rename or reorder a column
+      description: |
+        Accepts name and/or position. When position changes the backend
+        reorders sibling columns to accommodate the move.
+      tags: [Columns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "QA"
+                position:
+                  type: integer
+                  minimum: 0
+                  description: New zero-based position among sibling columns.
+                  example: 2
+      responses:
+        "200":
+          description: The updated column.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Column"
+        "404":
+          description: Column not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      operationId: deleteColumn
+      summary: Delete a column
+      description: |
+        Deletes the column and all cards within it. Remaining sibling columns
+        are re-indexed.
+      tags: [Columns]
+      responses:
+        "204":
+          description: Column deleted successfully.
+        "404":
+          description: Column not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ─────────────────────────────── Cards ──────────────────────────────
+
+  /columns/{columnId}/cards:
+    parameters:
+      - $ref: "#/components/parameters/columnId"
+
+    post:
+      operationId: createCard
+      summary: Create a card in a column
+      description: |
+        Creates a new card at the bottom of the column. Title defaults to
+        "Untitled card" if empty. Priority defaults to "medium".
+      tags: [Cards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardCreate"
+      responses:
+        "201":
+          description: The created card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Column not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /cards/{cardId}:
+    parameters:
+      - $ref: "#/components/parameters/cardId"
+
+    patch:
+      operationId: updateCard
+      summary: Update a card (edit fields and/or move)
+      description: |
+        Handles both field edits AND moves/reorders. To move a card to a
+        different column, include column_id. To reorder within the same
+        column, include position. Both can be supplied together.
+      tags: [Cards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardUpdate"
+      responses:
+        "200":
+          description: The updated card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Card not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      operationId: deleteCard
+      summary: Delete a card
+      description: |
+        Deletes the card and its label associations. Remaining cards in the
+        column are re-indexed.
+      tags: [Cards]
+      responses:
+        "204":
+          description: Card deleted successfully.
+        "404":
+          description: Card not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ────────────────────────────── Labels ──────────────────────────────
+
+  /boards/{boardId}/labels:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+
+    post:
+      operationId: createLabel
+      summary: Create a label for a board
+      description: Labels are scoped to a board and reusable across its cards.
+      tags: [Labels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, color]
+              properties:
+                name:
+                  type: string
+                  example: "Bug"
+                color:
+                  type: string
+                  description: Hex color string.
+                  example: "#ef4444"
+      responses:
+        "201":
+          description: The created label.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "404":
+          description: Board not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /labels/{labelId}:
+    parameters:
+      - $ref: "#/components/parameters/labelId"
+
+    delete:
+      operationId: deleteLabel
+      summary: Delete a label
+      description: |
+        Deletes the label and removes it from all cards that had it attached.
+      tags: [Labels]
+      responses:
+        "204":
+          description: Label deleted successfully.
+        "404":
+          description: Label not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ──────────────────────────── Card ↔ Label ──────────────────────────
+
+  /cards/{cardId}/labels/{labelId}:
+    parameters:
+      - $ref: "#/components/parameters/cardId"
+      - $ref: "#/components/parameters/labelId"
+
+    put:
+      operationId: attachLabelToCard
+      summary: Attach a label to a card
+      description: Idempotent — no error if the label is already attached.
+      tags: [Card Labels]
+      responses:
+        "204":
+          description: Label attached (or was already attached).
+        "404":
+          description: Card or label not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      operationId: removeLabelFromCard
+      summary: Remove a label from a card
+      tags: [Card Labels]
+      responses:
+        "204":
+          description: Label removed from card.
+        "404":
+          description: Card or label not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  # ─────────────────────────── Path Parameters ────────────────────────
+
+  parameters:
+    boardId:
+      name: boardId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique board identifier.
+
+    columnId:
+      name: columnId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique column identifier.
+
+    cardId:
+      name: cardId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique card identifier.
+
+    labelId:
+      name: labelId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique label identifier.
+
+  # ──────────────────────────────── Schemas ───────────────────────────
+
+  schemas:
+    Board:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          example: "a1b2c3d4"
+        name:
+          type: string
+          example: "Product Launch"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-09-12T01:00:00.000Z"
+
+    Column:
+      type: object
+      required: [id, board_id, name, position]
+      properties:
+        id:
+          type: string
+        board_id:
+          type: string
+        name:
+          type: string
+          example: "To Do"
+        position:
+          type: integer
+          minimum: 0
+          example: 0
+
+    Card:
+      type: object
+      required:
+        - id
+        - column_id
+        - title
+        - description
+        - assignee_name
+        - assignee_color
+        - due_date
+        - priority
+        - position
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        column_id:
+          type: string
+        title:
+          type: string
+          example: "Draft landing page copy"
+        description:
+          type: string
+          example: "Short punchy hero and three benefits."
+        assignee_name:
+          type: string
+          nullable: true
+          example: "Alice"
+        assignee_color:
+          type: string
+          nullable: true
+          description: Hex color string for the assignee avatar.
+          example: "#0f766e"
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-09-18"
+        priority:
+          $ref: "#/components/schemas/Priority"
+        position:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CardCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "New task"
+        description:
+          type: string
+          default: ""
+        assignee_name:
+          type: string
+          nullable: true
+        assignee_color:
+          type: string
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/Priority"
+
+    CardUpdate:
+      type: object
+      description: |
+        All fields optional. Include column_id and/or position to move the
+        card; include other fields to edit them.
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        assignee_name:
+          type: string
+          nullable: true
+        assignee_color:
+          type: string
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/Priority"
+        column_id:
+          type: string
+          description: Target column ID (for cross-column moves).
+        position:
+          type: integer
+          minimum: 0
+          description: Target zero-based position in the destination column.
+
+    Label:
+      type: object
+      required: [id, board_id, name, color]
+      properties:
+        id:
+          type: string
+        board_id:
+          type: string
+        name:
+          type: string
+          example: "Bug"
+        color:
+          type: string
+          description: Hex color string.
+          example: "#ef4444"
+
+    CardLabel:
+      type: object
+      required: [card_id, label_id]
+      properties:
+        card_id:
+          type: string
+        label_id:
+          type: string
+
+    BoardDetail:
+      description: |
+        Full board payload including nested columns (sorted by position),
+        cards (sorted by position), labels, and card-label join records.
+      allOf:
+        - $ref: "#/components/schemas/Board"
+        - type: object
+          required: [columns, cards, labels, card_labels]
+          properties:
+            columns:
+              type: array
+              items:
+                $ref: "#/components/schemas/Column"
+            cards:
+              type: array
+              items:
+                $ref: "#/components/schemas/Card"
+            labels:
+              type: array
+              items:
+                $ref: "#/components/schemas/Label"
+            card_labels:
+              type: array
+              items:
+                $ref: "#/components/schemas/CardLabel"
+
+    Priority:
+      type: string
+      enum: [low, medium, high]
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: "Board not found"
+
+tags:
+  - name: Boards
+    description: CRUD operations for kanban boards.
+  - name: Columns
+    description: Manage columns within a board.
+  - name: Cards
+    description: Manage cards within columns.
+  - name: Labels
+    description: Board-scoped reusable labels.
+  - name: Card Labels
+    description: Attach/detach labels on cards.
