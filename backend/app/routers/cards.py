@@ -6,26 +6,32 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from app import store
 from app.auth import get_current_user
+from app.db.engine import get_db
+from app.db.models import CardRow, ColumnRow
+from app.db.serializers import card_to_pydantic
 from app.models import Card, CardCreate, CardUpdate, ErrorResponse, Priority
 
 router = APIRouter(tags=["Cards"])
 
 
-def _cards_in_column(column_id: str) -> list[Card]:
+def _cards_in_column(db: Session, column_id: str) -> list[CardRow]:
     """Return cards in a column sorted by position."""
-    return sorted(
-        [c for c in store.cards.values() if c.column_id == column_id],
-        key=lambda c: c.position,
+    return (
+        db.query(CardRow)
+        .filter(CardRow.column_id == column_id)
+        .order_by(CardRow.position.asc())
+        .all()
     )
 
 
-def _reindex_cards(column_id: str) -> None:
+def _reindex_cards(db: Session, column_id: str) -> None:
     """Re-index positions 0..n for cards in a column."""
-    for i, card in enumerate(_cards_in_column(column_id)):
-        store.cards[card.id] = card.model_copy(update={"position": i})
+    for i, card in enumerate(_cards_in_column(db, column_id)):
+        card.position = i
+    db.flush()
 
 
 @router.post(
@@ -37,9 +43,11 @@ def _reindex_cards(column_id: str) -> None:
 def create_card(
     columnId: str,
     body: CardCreate,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> Card:
-    if columnId not in store.columns:
+    col = db.get(ColumnRow, columnId)
+    if not col:
         raise HTTPException(status_code=404, detail="Column not found")
 
     title = (body.title or "").strip()
@@ -47,9 +55,11 @@ def create_card(
         title = "Untitled card"
 
     now = datetime.now(timezone.utc)
-    siblings = _cards_in_column(columnId)
+    siblings = _cards_in_column(db, columnId)
 
-    card = Card(
+    priority_val = body.priority.value if body.priority else Priority.medium.value
+
+    card = CardRow(
         id=str(uuid.uuid4()),
         column_id=columnId,
         title=title,
@@ -57,13 +67,15 @@ def create_card(
         assignee_name=body.assignee_name,
         assignee_color=body.assignee_color,
         due_date=body.due_date,
-        priority=body.priority or Priority.medium,
+        priority=priority_val,
         position=len(siblings),
         created_at=now,
         updated_at=now,
     )
-    store.cards[card.id] = card
-    return card
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+    return card_to_pydantic(card)
 
 
 @router.patch(
@@ -74,26 +86,30 @@ def create_card(
 def update_card(
     cardId: str,
     body: CardUpdate,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> Card:
-    card = store.cards.get(cardId)
+    card = db.get(CardRow, cardId)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
     now = datetime.now(timezone.utc)
+    card.updated_at = now
 
-    # Collect simple field updates
-    field_updates: dict = {"updated_at": now}
-    for field in ("title", "description", "assignee_name", "assignee_color", "due_date", "priority"):
-        value = getattr(body, field, None)
-        if value is not None:
-            field_updates[field] = value
+    for field in ("title", "description", "assignee_name", "assignee_color", "due_date"):
+        val = getattr(body, field, None)
+        if val is not None:
+            setattr(card, field, val)
+
+    if body.priority is not None:
+        card.priority = body.priority.value
 
     # Handle move / reorder
     target_column_id = body.column_id if body.column_id is not None else card.column_id
     target_position = body.position
 
-    if target_column_id not in store.columns:
+    target_col = db.get(ColumnRow, target_column_id)
+    if not target_col:
         raise HTTPException(status_code=404, detail="Target column not found")
 
     moving = target_column_id != card.column_id or target_position is not None
@@ -102,33 +118,27 @@ def update_card(
         old_column_id = card.column_id
 
         # Remove card from old column
-        old_siblings = [c for c in _cards_in_column(old_column_id) if c.id != cardId]
+        old_siblings = [c for c in _cards_in_column(db, old_column_id) if c.id != cardId]
         for i, c in enumerate(old_siblings):
-            store.cards[c.id] = c.model_copy(update={"position": i})
+            c.position = i
 
         # Determine target position in new column
-        new_siblings = [c for c in _cards_in_column(target_column_id) if c.id != cardId]
+        new_siblings = [c for c in _cards_in_column(db, target_column_id) if c.id != cardId]
         if target_position is None:
             target_position = len(new_siblings)
         else:
             target_position = min(target_position, len(new_siblings))
 
-        field_updates["column_id"] = target_column_id
-        field_updates["position"] = target_position
+        card.column_id = target_column_id
+        card.position = target_position
 
-        # Update the card
-        card = card.model_copy(update=field_updates)
-        store.cards[cardId] = card
-
-        # Insert into new column and reindex
         new_siblings.insert(target_position, card)
         for i, c in enumerate(new_siblings):
-            store.cards[c.id] = c.model_copy(update={"position": i})
-    else:
-        card = card.model_copy(update=field_updates)
-        store.cards[cardId] = card
+            c.position = i
 
-    return store.cards[cardId]
+    db.commit()
+    db.refresh(card)
+    return card_to_pydantic(card)
 
 
 @router.delete(
@@ -138,16 +148,16 @@ def update_card(
 )
 def delete_card(
     cardId: str,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> None:
-    card = store.cards.pop(cardId, None)
+    card = db.get(CardRow, cardId)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    # Remove label associations
-    store.card_labels[:] = [
-        cl for cl in store.card_labels if cl.card_id != cardId
-    ]
+    col_id = card.column_id
+    db.delete(card)
+    db.flush()
 
-    # Reindex remaining cards in the column
-    _reindex_cards(card.column_id)
+    _reindex_cards(db, col_id)
+    db.commit()

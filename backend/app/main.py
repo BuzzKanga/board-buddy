@@ -7,14 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db.engine import Base, SessionLocal, engine
+from app.db.seed import seed_data
 from app.routers import auth, boards, cards, columns, labels
-from app.store import seed_data
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Seed the in-memory store on startup."""
-    seed_data()
+    """Initialize database tables and seed initial data if empty."""
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        seed_data(db)
     yield
 
 

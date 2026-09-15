@@ -65,8 +65,15 @@ uv run uvicorn app.main:app --reload         # Start dev server on http://localh
 - **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
+#### Database Configuration
+
+The backend uses SQLAlchemy and is database-agnostic. Configure the connection via the `DATABASE_URL` environment variable:
+
+- **Default (SQLite):** `sqlite:///./board_buddy.db`
+- **PostgreSQL (optional):** `postgresql+psycopg2://user:password@localhost:5432/board_buddy`
+
 > [!NOTE]
-> **Authentication Status:** Authentication is currently bypassed for rapid local development. All endpoints are open and associate actions with an anonymous user context (`get_current_user()` returns `"anonymous"`). Full database persistence and JWT authentication will be restored in a future milestone.
+> **Authentication Status:** Authentication is currently bypassed for rapid local development. All endpoints are open and associate actions with an anonymous user context (`get_current_user()` returns `"anonymous"`). JWT authentication will be restored in a future milestone.
 
 ### 2. Start the Frontend
 
@@ -106,7 +113,7 @@ npm run format                               # Check / format code with Prettier
 
 ## Seed Data
 
-On startup, the backend automatically seeds an in-memory dataset so you can test the application immediately:
+On initial startup, the backend automatically creates database tables and seeds demo data if the database is empty:
 
 - **2 Boards:**
   - *Product Launch*

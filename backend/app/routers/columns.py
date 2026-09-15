@@ -5,27 +5,32 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from app import store
 from app.auth import get_current_user
+from app.db.engine import get_db
+from app.db.models import BoardRow, ColumnRow
+from app.db.serializers import column_to_pydantic
 from app.models import Column, ColumnCreate, ColumnUpdate, ErrorResponse
 
 router = APIRouter(tags=["Columns"])
 
 
-def _sibling_columns(board_id: str) -> list[Column]:
+def _sibling_columns(db: Session, board_id: str) -> list[ColumnRow]:
     """Return columns for a board sorted by position."""
-    return sorted(
-        [c for c in store.columns.values() if c.board_id == board_id],
-        key=lambda c: c.position,
+    return (
+        db.query(ColumnRow)
+        .filter(ColumnRow.board_id == board_id)
+        .order_by(ColumnRow.position.asc())
+        .all()
     )
 
 
-def _reindex_columns(board_id: str) -> None:
+def _reindex_columns(db: Session, board_id: str) -> None:
     """Re-index positions 0..n for columns of a board."""
-    for i, col in enumerate(_sibling_columns(board_id)):
-        updated = col.model_copy(update={"position": i})
-        store.columns[col.id] = updated
+    for i, col in enumerate(_sibling_columns(db, board_id)):
+        col.position = i
+    db.flush()
 
 
 @router.post(
@@ -37,26 +42,30 @@ def _reindex_columns(board_id: str) -> None:
 def create_column(
     boardId: str,
     body: ColumnCreate,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> Column:
-    if boardId not in store.boards:
+    board = db.get(BoardRow, boardId)
+    if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     name = body.name.strip() if body.name else ""
     if not name:
         name = "New column"
 
-    siblings = _sibling_columns(boardId)
+    siblings = _sibling_columns(db, boardId)
     position = len(siblings)
 
-    col = Column(
+    col = ColumnRow(
         id=str(uuid.uuid4()),
         board_id=boardId,
         name=name,
         position=position,
     )
-    store.columns[col.id] = col
-    return col
+    db.add(col)
+    db.commit()
+    db.refresh(col)
+    return column_to_pydantic(col)
 
 
 @router.patch(
@@ -67,36 +76,30 @@ def create_column(
 def update_column(
     columnId: str,
     body: ColumnUpdate,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> Column:
-    col = store.columns.get(columnId)
+    col = db.get(ColumnRow, columnId)
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
 
-    updates: dict = {}
     if body.name is not None:
-        updates["name"] = body.name
+        col.name = body.name
 
     if body.position is not None and body.position != col.position:
         board_id = col.board_id
-        siblings = _sibling_columns(board_id)
+        siblings = _sibling_columns(db, board_id)
         new_pos = min(body.position, len(siblings) - 1)
 
-        # Remove from current position and insert at new
         ordered = [c for c in siblings if c.id != columnId]
-        updated_col = col.model_copy(update={**updates, "position": new_pos})
-        ordered.insert(new_pos, updated_col)
+        ordered.insert(new_pos, col)
 
         for i, c in enumerate(ordered):
-            store.columns[c.id] = c.model_copy(update={"position": i})
+            c.position = i
 
-        return store.columns[columnId]
-
-    if updates:
-        col = col.model_copy(update=updates)
-        store.columns[columnId] = col
-
-    return col
+    db.commit()
+    db.refresh(col)
+    return column_to_pydantic(col)
 
 
 @router.delete(
@@ -106,21 +109,16 @@ def update_column(
 )
 def delete_column(
     columnId: str,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> None:
-    col = store.columns.pop(columnId, None)
+    col = db.get(ColumnRow, columnId)
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
 
-    # Delete cards in this column and their label associations
-    card_ids = [c.id for c in store.cards.values() if c.column_id == columnId]
-    for cid in card_ids:
-        del store.cards[cid]
+    board_id = col.board_id
+    db.delete(col)
+    db.flush()
 
-    card_id_set = set(card_ids)
-    store.card_labels[:] = [
-        cl for cl in store.card_labels if cl.card_id not in card_id_set
-    ]
-
-    # Reindex remaining sibling columns
-    _reindex_columns(col.board_id)
+    _reindex_columns(db, board_id)
+    db.commit()

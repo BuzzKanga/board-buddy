@@ -5,9 +5,12 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
-from app import store
 from app.auth import get_current_user
+from app.db.engine import get_db
+from app.db.models import BoardRow, CardLabelRow, CardRow, LabelRow
+from app.db.serializers import label_to_pydantic
 from app.models import ErrorResponse, Label, LabelCreate
 
 router = APIRouter(tags=["Labels"])
@@ -25,19 +28,23 @@ router = APIRouter(tags=["Labels"])
 def create_label(
     boardId: str,
     body: LabelCreate,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> Label:
-    if boardId not in store.boards:
+    board = db.get(BoardRow, boardId)
+    if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    label = Label(
+    label = LabelRow(
         id=str(uuid.uuid4()),
         board_id=boardId,
         name=body.name,
         color=body.color,
     )
-    store.labels[label.id] = label
-    return label
+    db.add(label)
+    db.commit()
+    db.refresh(label)
+    return label_to_pydantic(label)
 
 
 @router.delete(
@@ -47,16 +54,15 @@ def create_label(
 )
 def delete_label(
     labelId: str,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> None:
-    label = store.labels.pop(labelId, None)
+    label = db.get(LabelRow, labelId)
     if not label:
         raise HTTPException(status_code=404, detail="Label not found")
 
-    # Remove all associations with this label
-    store.card_labels[:] = [
-        cl for cl in store.card_labels if cl.label_id != labelId
-    ]
+    db.delete(label)
+    db.commit()
 
 
 # ── Card ↔ Label ────────────────────────────────────────────────────────
@@ -70,21 +76,26 @@ def delete_label(
 def attach_label_to_card(
     cardId: str,
     labelId: str,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> None:
-    if cardId not in store.cards:
+    card = db.get(CardRow, cardId)
+    if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    if labelId not in store.labels:
+    label = db.get(LabelRow, labelId)
+    if not label:
         raise HTTPException(status_code=404, detail="Label not found")
 
     # Idempotent — don't add if already attached
-    already = any(
-        cl.card_id == cardId and cl.label_id == labelId
-        for cl in store.card_labels
+    existing = (
+        db.query(CardLabelRow)
+        .filter(CardLabelRow.card_id == cardId, CardLabelRow.label_id == labelId)
+        .first()
     )
-    if not already:
-        from app.models import CardLabel
-        store.card_labels.append(CardLabel(card_id=cardId, label_id=labelId))
+    if not existing:
+        assoc = CardLabelRow(card_id=cardId, label_id=labelId)
+        db.add(assoc)
+        db.commit()
 
 
 @router.delete(
@@ -95,14 +106,21 @@ def attach_label_to_card(
 def remove_label_from_card(
     cardId: str,
     labelId: str,
+    db: Session = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> None:
-    if cardId not in store.cards:
+    card = db.get(CardRow, cardId)
+    if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    if labelId not in store.labels:
+    label = db.get(LabelRow, labelId)
+    if not label:
         raise HTTPException(status_code=404, detail="Label not found")
 
-    store.card_labels[:] = [
-        cl for cl in store.card_labels
-        if not (cl.card_id == cardId and cl.label_id == labelId)
-    ]
+    assoc = (
+        db.query(CardLabelRow)
+        .filter(CardLabelRow.card_id == cardId, CardLabelRow.label_id == labelId)
+        .first()
+    )
+    if assoc:
+        db.delete(assoc)
+        db.commit()
