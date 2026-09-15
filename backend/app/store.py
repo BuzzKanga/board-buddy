@@ -11,9 +11,7 @@ from app.models import (
     Column,
     Label,
     Priority,
-    User,
 )
-from app.auth import hash_password
 
 # ── Global stores (dictionaries keyed by id) ───────────────────────────
 
@@ -22,7 +20,7 @@ columns: dict[str, Column] = {}
 cards: dict[str, Card] = {}
 labels: dict[str, Label] = {}
 card_labels: list[CardLabel] = []
-users: dict[str, User] = {}  # keyed by username
+
 
 
 def _now() -> datetime:
@@ -36,19 +34,12 @@ def clear() -> None:
     cards.clear()
     labels.clear()
     card_labels.clear()
-    users.clear()
 
 
 def seed_data() -> None:
     """Populate stores with demo data."""
     clear()
 
-    # ── Demo user ───────────────────────────────────────────────────
-    users["demo"] = User(
-        id="user-1",
-        username="demo",
-        hashed_password=hash_password("password123"),
-    )
 
     ts = datetime(2026, 9, 12, 1, 0, 0, tzinfo=timezone.utc)
 

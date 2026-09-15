@@ -1,42 +1,10 @@
-"""Auth router — register and login (public endpoints)."""
+"""Auth router — BYPASSED for now, will be re-added with database backend."""
 
 from __future__ import annotations
 
-import uuid
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-
-from app import store
-from app.auth import create_access_token, hash_password, verify_password
-from app.models import Token, User, UserCreate
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-def register(body: UserCreate) -> Token:
-    if body.username in store.users:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
-    user = User(
-        id=str(uuid.uuid4()),
-        username=body.username,
-        hashed_password=hash_password(body.password),
-    )
-    store.users[user.username] = user
-    return Token(access_token=create_access_token(user.username))
-
-
-@router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
-    user = store.users.get(form_data.username)
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-        )
-    return Token(access_token=create_access_token(user.username))
-
+# No endpoints while auth is bypassed.
+# Register and login will be re-added when the backend switches to a database.
