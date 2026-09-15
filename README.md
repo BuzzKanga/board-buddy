@@ -28,9 +28,8 @@ uv run uvicorn app.main:app --reload         # Start dev server on http://localh
 ```
 
 - **API docs (Swagger UI):** http://localhost:8000/docs
-- **Demo user:** `demo` / `password123`
 
-To authenticate in Swagger UI, click the **Authorize** button and enter the demo credentials.
+> **Note:** Authentication is currently bypassed. All endpoints are open — no login required.
 
 #### Running Tests
 
@@ -47,27 +46,6 @@ npm install                                  # Install dependencies
 npm run dev                                  # Start dev server on http://localhost:5173
 ```
 
-## API Authentication
-
-All endpoints except `/auth/register` and `/auth/login` require a bearer token.
-
-1. **Register** a new user:
-   ```
-   POST /auth/register
-   Body: {"username": "yourname", "password": "yourpassword"}
-   ```
-
-2. **Login** to get a token:
-   ```
-   POST /auth/login
-   Form data: username=demo, password=password123
-   ```
-
-3. **Use the token** in subsequent requests:
-   ```
-   Authorization: Bearer <your_access_token>
-   ```
-
 ## Seed Data
 
 The backend starts with demo data pre-loaded:
@@ -83,5 +61,5 @@ The backend starts with demo data pre-loaded:
 |----------|-------------------------------------|
 | Frontend | React, Vite, TypeScript             |
 | Backend  | FastAPI, Pydantic, Python           |
-| Auth     | JWT (python-jose), bcrypt           |
+| Auth     | Bypassed (will be re-added later)   |
 | Storage  | In-memory (dictionaries)            |
