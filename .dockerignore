@@ -1,0 +1,19 @@
+.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.db
+
+# Frontend build artifacts (rebuilt in Docker)
+frontend/.output
+frontend/.tanstack
+frontend/.wrangler
+frontend/dist
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
