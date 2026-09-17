@@ -86,7 +86,20 @@ uv run uvicorn app.main:app --reload         # Start dev server on http://localh
 The backend uses SQLAlchemy and is database-agnostic. Configure the connection via the `DATABASE_URL` environment variable:
 
 - **Default (SQLite):** `sqlite:///./board_buddy.db`
-- **PostgreSQL (optional):** `postgresql+psycopg2://user:password@localhost:5432/board_buddy`
+- **PostgreSQL:** `postgresql+psycopg2://boardbuddy:boardbuddy@localhost:5432/board_buddy`
+
+To quickly start a local PostgreSQL database for development, you can run this Docker command:
+
+```bash
+docker run -d \
+  --name board-buddy-db \
+  -e POSTGRES_USER=boardbuddy \
+  -e POSTGRES_PASSWORD=boardbuddy \
+  -e POSTGRES_DB=board_buddy \
+  -p 5432:5432 \
+  -v board-buddy-pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
 
 > [!NOTE]
 > **Authentication Status:** Authentication is currently bypassed for rapid local development. All endpoints are open and associate actions with an anonymous user context (`get_current_user()` returns `"anonymous"`). JWT authentication will be restored in a future milestone.
