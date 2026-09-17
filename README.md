@@ -53,14 +53,11 @@ board-buddy/
 
 ### Run with Docker
 
-The easiest way to run Board Buddy is using Docker. This will build and run both the frontend and backend in a single container.
+The easiest way to run Board Buddy (both the application and the PostgreSQL database) is using Docker Compose:
 
 ```bash
-# Build the Docker image
-docker build -t board-buddy .
-
-# Run the container
-docker run -p 8000:8000 board-buddy
+# Build the images and run the containers
+docker compose up --build
 ```
 
 The application will be available at [http://localhost:8000](http://localhost:8000).
@@ -88,17 +85,10 @@ The backend uses SQLAlchemy and is database-agnostic. Configure the connection v
 - **Default (SQLite):** `sqlite:///./board_buddy.db`
 - **PostgreSQL:** `postgresql+psycopg2://boardbuddy:boardbuddy@localhost:5432/board_buddy`
 
-To quickly start a local PostgreSQL database for development, you can run this Docker command:
+To quickly start just a local PostgreSQL database for development (without running the app in Docker), you can use the compose file:
 
 ```bash
-docker run -d \
-  --name board-buddy-db \
-  -e POSTGRES_USER=boardbuddy \
-  -e POSTGRES_PASSWORD=boardbuddy \
-  -e POSTGRES_DB=board_buddy \
-  -p 5432:5432 \
-  -v board-buddy-pgdata:/var/lib/postgresql/data \
-  postgres:16-alpine
+docker compose up db -d
 ```
 
 > [!NOTE]
