@@ -51,7 +51,23 @@ board-buddy/
 
 ## Getting Started
 
-To run the full stack locally, open two terminal windows (one for the backend and one for the frontend).
+### Run with Docker
+
+The easiest way to run Board Buddy is using Docker. This will build and run both the frontend and backend in a single container.
+
+```bash
+# Build the Docker image
+docker build -t board-buddy .
+
+# Run the container
+docker run -p 8000:8000 board-buddy
+```
+
+The application will be available at [http://localhost:8000](http://localhost:8000).
+
+### Manual Setup
+
+To run the full stack locally without Docker, open two terminal windows (one for the backend and one for the frontend).
 
 ### 1. Start the Backend
 
