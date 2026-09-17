@@ -42,12 +42,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router)
-app.include_router(boards.router)
-app.include_router(columns.router)
-app.include_router(cards.router)
-app.include_router(labels.router)
+# Include routers under /api to avoid conflicts with SPA routes
+from fastapi import APIRouter
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth.router)
+api_router.include_router(boards.router)
+api_router.include_router(columns.router)
+api_router.include_router(cards.router)
+api_router.include_router(labels.router)
+
+app.include_router(api_router)
 
 # ---------------------------------------------------------------------------
 # Serve frontend SPA (only when the Docker-built static directory exists)
