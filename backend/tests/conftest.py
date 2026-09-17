@@ -55,4 +55,4 @@ def reset_db():
 @pytest.fixture()
 def client():
     """FastAPI test client."""
-    return TestClient(app)
+    return TestClient(app, base_url="http://testserver/api")
