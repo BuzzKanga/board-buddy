@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Board Buddy: Single EC2 Node with Docker Compose (Caddy, App, Postgres) for Hobby Projects'
+
+Parameters:
+  ContainerImage:
+    Type: String
+    Description: 'The ECR image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/board-buddy:latest)'
+  DomainName:
+    Type: String
+    Description: 'Your free Dynamic DNS subdomain for Automatic TLS via Caddy (e.g., myboardbuddy.duckdns.org)'
+  InstanceType:
+    Type: String
+    Default: 't3.small'
+    Description: 'EC2 instance type (t3.small recommended to fit DB + App + Proxy in memory)'
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
+    Description: 'AMI ID for Amazon Linux 2023'
+
+Resources:
+  # ==========================================================
+  # 1. NETWORKING (VPC, Subnet, Internet Gateway)
+  # ==========================================================
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: BoardBuddy-Hobby-VPC
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+  
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.1.0/24'
+      MapPublicIpOnLaunch: true
+
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+
+  Route:
+    Type: 'AWS::EC2::Route'
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  # ==========================================================
+  # 2. SECURITY GROUPS
+  # ==========================================================
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow HTTP and HTTPS traffic for Caddy'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # ==========================================================
+  # 3. IAM (SSM + ECR)
+  # ==========================================================
+  InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  # ==========================================================
+  # 4. EC2 INSTANCE & ELASTIC IP
+  # ==========================================================
+  AppInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y docker
+          systemctl start docker
+          systemctl enable docker
+          
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          
+          # Authenticate to ECR
+          REGION=${AWS::Region}
+          ACCOUNT=$(echo ${ContainerImage} | cut -d. -f1)
+          aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$REGION.amazonaws.com
+          
+          # Setup workspace
+          mkdir -p /opt/boardbuddy
+          cd /opt/boardbuddy
+          
+          # Generate Caddyfile
+          cat << 'EOF' > Caddyfile
+          ${DomainName} {
+              reverse_proxy app:8000
+          }
+          EOF
+          
+          # Generate docker-compose.yaml
+          cat << 'EOF' > docker-compose.yaml
+          services:
+            caddy:
+              image: caddy:2-alpine
+              restart: unless-stopped
+              ports:
+                - "80:80"
+                - "443:443"
+              volumes:
+                - ./Caddyfile:/etc/caddy/Caddyfile
+                - caddy_data:/data
+                - caddy_config:/config
+              depends_on:
+                - app
+
+            app:
+              image: ${ContainerImage}
+              restart: unless-stopped
+              environment:
+                - DATABASE_URL=postgresql://boardbuddy:supersecret@db:5432/boardbuddy
+              depends_on:
+                db:
+                  condition: service_healthy
+
+            db:
+              image: postgres:15-alpine
+              restart: unless-stopped
+              environment:
+                - POSTGRES_USER=boardbuddy
+                - POSTGRES_PASSWORD=supersecret
+                - POSTGRES_DB=boardbuddy
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U boardbuddy -d boardbuddy"]
+                interval: 5s
+                timeout: 5s
+                retries: 5
+
+          volumes:
+            caddy_data:
+            caddy_config:
+            postgres_data:
+          EOF
+          
+          # Start services
+          /usr/local/bin/docker-compose up -d
+
+  InstanceEIP:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      InstanceId: !Ref AppInstance
+
+Outputs:
+  PublicIP:
+    Description: 'Public IP address of the EC2 instance (Map your free DuckDNS domain here)'
+    Value: !Ref InstanceEIP

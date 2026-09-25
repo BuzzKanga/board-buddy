@@ -108,6 +108,35 @@ The frontend automatically communicates with the backend at `http://localhost:80
 
 ---
 
+---
+
+## ☁️ AWS Deployment (Hobby Edition)
+
+Board Buddy includes a ready-to-deploy AWS CloudFormation template (`template.yaml`) designed for hobby projects. It provisions a single EC2 instance running the app, PostgreSQL, and Caddy (for automatic, free HTTPS via a Dynamic DNS provider like DuckDNS).
+
+### 1. Push Docker Image to AWS ECR
+Create a registry and push the image:
+```bash
+aws ecr create-repository --repository-name board-buddy
+# Authenticate, build, and push your image to the ECR URI
+```
+
+### 2. Deploy CloudFormation Stack
+Deploy the infrastructure, replacing the parameters with your details:
+```bash
+aws cloudformation create-stack \
+  --stack-name BoardBuddyStack \
+  --template-body file://template.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=ContainerImage,ParameterValue=<YOUR_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/board-buddy:latest \
+               ParameterKey=DomainName,ParameterValue=myboardbuddy.duckdns.org
+```
+
+### 3. Configure DNS
+Once the stack completes (`CREATE_COMPLETE`), retrieve the `PublicIP` output and point your DuckDNS domain to it. Caddy will automatically provision TLS certificates within a few minutes.
+
+---
+
 ## Testing & Quality Checks
 
 ### Backend Tests
