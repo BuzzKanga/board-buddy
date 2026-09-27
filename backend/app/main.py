@@ -51,6 +51,12 @@ api_router.include_router(columns.router)
 api_router.include_router(cards.router)
 api_router.include_router(labels.router)
 
+@api_router.get("/health")
+async def health_check():
+    """Lightweight health-check used by CI/CD and load balancers."""
+    return {"status": "ok"}
+
+
 app.include_router(api_router)
 
 # ---------------------------------------------------------------------------

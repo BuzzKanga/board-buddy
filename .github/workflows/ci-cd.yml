@@ -1,0 +1,265 @@
+# =============================================================================
+# Board Buddy — CI / CD Pipeline
+# =============================================================================
+# Triggers on push to main. Runs backend + frontend tests in parallel, then
+# builds the Docker Compose stack for integration & E2E tests, pushes the
+# image to ECR, deploys via CloudFormation, and validates the health endpoint.
+# =============================================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+
+# Grant the OIDC JWT so the deploy job can assume the AWS role without secrets.
+permissions:
+  id-token: write
+  contents: read
+
+# Cancel any in-progress run for the same branch.
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─── Shared environment variables ────────────────────────────────────────────
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: board-buddy
+  CFN_STACK_NAME: BoardBuddyStack
+
+jobs:
+  # ===========================================================================
+  # 1a. Backend unit tests (pytest)
+  # ===========================================================================
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run pytest
+        run: uv run pytest -v --tb=short
+
+  # ===========================================================================
+  # 1b. Frontend checks (lint + build)
+  # ===========================================================================
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npx vite build --config vite.spa.config.ts
+
+  # ===========================================================================
+  # 2. Integration & E2E tests against the Docker Compose stack
+  # ===========================================================================
+  integration-e2e:
+    name: Integration & E2E Tests
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start Docker Compose stack
+        run: docker compose up -d --build --wait
+
+      - name: Wait for app to be ready
+        run: |
+          echo "Waiting for the app to become healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/health; then
+              echo ""
+              echo "App is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30 — retrying in 2s..."
+            sleep 2
+          done
+          echo "App failed to become healthy in time"
+          docker compose logs
+          exit 1
+
+      - name: Run integration smoke tests
+        run: |
+          # Verify the API returns valid JSON from key endpoints
+          echo "=== GET /api/health ==="
+          curl -sf http://localhost:8000/api/health | jq .
+
+          echo "=== GET /api/boards ==="
+          curl -sf http://localhost:8000/api/boards | jq .
+
+          echo "=== GET /docs (OpenAPI) ==="
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://localhost:8000/docs
+
+      - name: Set up Node.js for Playwright
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E tests
+        working-directory: e2e
+        env:
+          CI: true
+        run: npx playwright test --project=chromium
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 14
+
+      - name: Tear down Docker Compose stack
+        if: always()
+        run: docker compose down -v
+
+  # ===========================================================================
+  # 3. Build, push to ECR, and deploy via CloudFormation
+  # ===========================================================================
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: [integration-e2e]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::8}"
+          FULL_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          docker build -t "${FULL_IMAGE}" .
+          docker tag "${FULL_IMAGE}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+          docker push "${FULL_IMAGE}"
+          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:latest"
+
+          echo "image=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name "${CFN_STACK_NAME}" \
+            --template-file template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              ContainerImage=${{ steps.build-image.outputs.image }} \
+              DomainName=${{ vars.DOMAIN_NAME }} \
+            --no-fail-on-empty-changeset
+
+      - name: Get deployment outputs
+        id: cfn-outputs
+        run: |
+          PUBLIC_IP=$(aws cloudformation describe-stacks \
+            --stack-name "${CFN_STACK_NAME}" \
+            --query "Stacks[0].Outputs[?OutputKey=='PublicIP'].OutputValue" \
+            --output text)
+          echo "public_ip=${PUBLIC_IP}" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: ${PUBLIC_IP}"
+
+  # ===========================================================================
+  # 4. Validate the deployment via the health endpoint
+  # ===========================================================================
+  validate:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get public IP from CloudFormation
+        id: cfn
+        run: |
+          PUBLIC_IP=$(aws cloudformation describe-stacks \
+            --stack-name "${CFN_STACK_NAME}" \
+            --query "Stacks[0].Outputs[?OutputKey=='PublicIP'].OutputValue" \
+            --output text)
+          echo "public_ip=${PUBLIC_IP}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for instance to pull new image and start
+        run: |
+          echo "Waiting 90s for EC2 user-data to pull and start the new image..."
+          sleep 90
+
+      - name: Validate health endpoint
+        run: |
+          HEALTH_URL="http://${{ steps.cfn.outputs.public_ip }}:8000/api/health"
+          echo "Checking: ${HEALTH_URL}"
+
+          for i in $(seq 1 20); do
+            RESPONSE=$(curl -sf "${HEALTH_URL}" 2>/dev/null || true)
+            if echo "${RESPONSE}" | jq -e '.status == "ok"' > /dev/null 2>&1; then
+              echo "✅ Health check passed!"
+              echo "${RESPONSE}" | jq .
+              exit 0
+            fi
+            echo "Attempt $i/20 — retrying in 15s..."
+            sleep 15
+          done
+
+          echo "❌ Health check failed after all retries"
+          exit 1
