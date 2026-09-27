@@ -95,11 +95,7 @@ export function CardDetailDialog({
           <div className="space-y-4">
             <div className="space-y-1.5">
               <FieldLabel htmlFor="card-title">Title</FieldLabel>
-              <Input
-                id="card-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <Input id="card-title" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <FieldLabel htmlFor="card-desc">Description</FieldLabel>

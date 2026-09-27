@@ -4,14 +4,7 @@
  * Every function is async and mirrors the REST endpoints. Components import
  * these functions and never need to know the implementation details.
  */
-import type {
-  Board,
-  BoardDetail,
-  Card,
-  Column,
-  Label,
-  Priority,
-} from "./types";
+import type { Board, BoardDetail, Card, Column, Label, Priority } from "./types";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000") + "/api";
 
@@ -102,8 +95,14 @@ export async function createCard(
 export async function updateCard(id: string, data: Partial<Card>): Promise<Card> {
   const body: Record<string, unknown> = {};
   for (const key of [
-    "title", "description", "assignee_name", "assignee_color",
-    "due_date", "priority", "column_id", "position",
+    "title",
+    "description",
+    "assignee_name",
+    "assignee_color",
+    "due_date",
+    "priority",
+    "column_id",
+    "position",
   ] as const) {
     if (data[key] !== undefined) body[key] = data[key];
   }

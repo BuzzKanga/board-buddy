@@ -17,6 +17,4 @@ const router = getRouter();
 // TanStack Start's RootRoute renders a full <html> document.
 // By mounting directly to `document`, we replace the static fallback HTML
 // and avoid invalid DOM nesting (<html> inside <div>).
-ReactDOM.createRoot(document).render(
-  <RouterProvider router={router} />,
-);
+ReactDOM.createRoot(document).render(<RouterProvider router={router} />);

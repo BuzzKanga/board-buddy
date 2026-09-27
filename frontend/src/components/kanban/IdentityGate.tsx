@@ -64,8 +64,8 @@ export function IdentityGate({
         <DialogHeader>
           <DialogTitle>Who's working the board?</DialogTitle>
           <DialogDescription>
-            Pick a display name and colour. It stays in this browser and is used to tag
-            cards you assign to yourself.
+            Pick a display name and colour. It stays in this browser and is used to tag cards you
+            assign to yourself.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

@@ -52,9 +52,7 @@ export function getPeople(): Person[] {
 }
 
 export function rememberPerson(person: Person): Person[] {
-  const people = getPeople().filter(
-    (p) => p.name.toLowerCase() !== person.name.toLowerCase(),
-  );
+  const people = getPeople().filter((p) => p.name.toLowerCase() !== person.name.toLowerCase());
   const next = [...people, person].sort((a, b) => a.name.localeCompare(b.name));
   writeJson(PEOPLE_KEY, next);
   return next;

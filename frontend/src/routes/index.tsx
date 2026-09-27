@@ -146,11 +146,7 @@ function BoardsPage() {
         )}
         {boards.map((board) => (
           <div key={board.id} className="kanban-card hover:kanban-card-hover relative p-5">
-            <Link
-              to="/boards/$boardId"
-              params={{ boardId: board.id }}
-              className="block pr-8"
-            >
+            <Link to="/boards/$boardId" params={{ boardId: board.id }} className="block pr-8">
               <h2 className="text-lg font-semibold">{board.name}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Created {format(new Date(board.created_at), "d MMM yyyy")}
@@ -176,10 +172,7 @@ function BoardsPage() {
                 >
                   <Pencil className="size-4" /> Rename
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => setDeleting(board)}
-                >
+                <DropdownMenuItem className="text-destructive" onClick={() => setDeleting(board)}>
                   <Trash2 className="size-4" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -193,17 +186,11 @@ function BoardsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Rename board</AlertDialogTitle>
           </AlertDialogHeader>
-          <Input
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            autoFocus
-          />
+          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                renaming && rename.mutate({ id: renaming.id, name: renameValue })
-              }
+              onClick={() => renaming && rename.mutate({ id: renaming.id, name: renameValue })}
             >
               Save
             </AlertDialogAction>
@@ -216,8 +203,7 @@ function BoardsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the board with all of its columns, cards and labels. It can't be
-              undone.
+              This removes the board with all of its columns, cards and labels. It can't be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

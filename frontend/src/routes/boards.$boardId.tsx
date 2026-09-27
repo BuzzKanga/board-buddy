@@ -54,18 +54,14 @@ export const Route = createFileRoute("/boards/$boardId")({
       { property: "og:title", content: "Board — Mini Kanban" },
       {
         property: "og:description",
-        content:
-          "Drag cards between columns, set priorities, labels, due dates and assignees.",
+        content: "Drag cards between columns, set priorities, labels, due dates and assignees.",
       },
     ],
   }),
   component: BoardPage,
 });
 
-type Drag =
-  | { type: "card"; id: string; columnId: string }
-  | { type: "column"; id: string }
-  | null;
+type Drag = { type: "card"; id: string; columnId: string } | { type: "column"; id: string } | null;
 
 function BoardPage() {
   const { boardId } = Route.useParams();
@@ -85,6 +81,7 @@ function BoardPage() {
   const boardQuery = useQuery({
     queryKey: ["board", boardId],
     queryFn: () => getBoard(boardId),
+    refetchInterval: 1000,
   });
 
   const refresh = () => {
@@ -101,8 +98,7 @@ function BoardPage() {
     onSuccess,
   });
   const editColumn = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Column> }) =>
-      updateColumn(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Column> }) => updateColumn(id, data),
     onSuccess,
   });
   const removeColumn = useMutation({
@@ -400,8 +396,8 @@ function BoardPage() {
             <AlertDialogTitle>Delete “{deletingColumn?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
               This column still has{" "}
-              {deletingColumn ? (cardsByColumn.get(deletingColumn.id)?.length ?? 0) : 0}{" "}
-              card(s). Deleting it removes those cards too.
+              {deletingColumn ? (cardsByColumn.get(deletingColumn.id)?.length ?? 0) : 0} card(s).
+              Deleting it removes those cards too.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
