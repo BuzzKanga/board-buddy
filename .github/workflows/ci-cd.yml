@@ -138,14 +138,18 @@ jobs:
       - name: Install E2E dependencies
         working-directory: e2e
         run: |
-          npm ci
+          npm ci --include=dev
           npx playwright install --with-deps chromium
 
       - name: Run Playwright E2E tests
         working-directory: e2e
         env:
           CI: true
-        run: npx playwright test --project=chromium
+        run: |
+          echo "Playwright version:"
+          npx playwright --version
+          echo "Running tests..."
+          npx playwright test --project=chromium
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
