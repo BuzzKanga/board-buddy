@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Board Buddy API",
     description="REST API for the Board Buddy kanban application.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
