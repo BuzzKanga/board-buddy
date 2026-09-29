@@ -230,6 +230,26 @@ jobs:
           echo "public_ip=${PUBLIC_IP}" >> "$GITHUB_OUTPUT"
           echo "Deployed to: ${PUBLIC_IP}"
 
+      - name: Restart application on EC2 via SSM
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:aws:cloudformation:stack-name,Values=${CFN_STACK_NAME}" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+            
+          IMAGE_URI=${{ steps.build-image.outputs.image }}
+          
+          # Send SSM command to update docker-compose.yaml with the new image and restart the stack
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              \"cd /opt/boardbuddy\",
+              \"sed -i 's|image: .*amazonaws.com/board-buddy:.*|image: ${IMAGE_URI}|g' docker-compose.yaml\",
+              \"/usr/local/bin/docker-compose pull\",
+              \"/usr/local/bin/docker-compose up -d\"
+            ]"
+
   # ===========================================================================
   # 4. Validate the deployment via the health endpoint
   # ===========================================================================
