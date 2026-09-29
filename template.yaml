@@ -83,6 +83,10 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
 
   # ==========================================================
   # 3. IAM (SSM + ECR)
@@ -166,6 +170,8 @@ Resources:
             app:
               image: ${ContainerImage}
               restart: unless-stopped
+              ports:
+                - "8000:8000"
               environment:
                 - DATABASE_URL=postgresql://boardbuddy:supersecret@db:5432/boardbuddy
               depends_on:
