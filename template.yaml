@@ -2,6 +2,13 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Board Buddy: Single EC2 Node with Docker Compose (Caddy, App, Postgres) for Hobby Projects'
 
 Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues:
+      - 'dev'
+      - 'prod'
+    Description: 'The deployment environment (e.g., dev or prod)'
   ContainerImage:
     Type: String
     Description: 'The ECR image URI (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/board-buddy:latest)'
@@ -29,7 +36,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: BoardBuddy-Hobby-VPC
+          Value: !Sub 'BoardBuddy-${Environment}-VPC'
 
   InternetGateway:
     Type: 'AWS::EC2::InternetGateway'
