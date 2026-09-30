@@ -6,7 +6,7 @@
 # image to ECR, deploys via CloudFormation, and validates the health endpoint.
 # =============================================================================
 
-name: CI/CD
+name: Deploy to dev
 
 on:
   push:
